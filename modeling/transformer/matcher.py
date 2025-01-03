@@ -82,7 +82,7 @@ class HungarianMatcher(nn.Module):
 
         # Final cost matrix
         C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
-        C = C.view(bs, num_queries, -1).cpu()        
+        C = C.view(bs, num_queries, -1).cpu()
 
         sizes = [len(v["boxes"]) for v in targets]
         C_split = C.split(sizes, -1)
@@ -155,14 +155,14 @@ class IterativeHungarianMatcher(nn.Module):
 
         # Final cost matrix
         C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
-        C = C.view(bs, num_queries, -1).cpu()        
+        C = C.view(bs, num_queries, -1).cpu()
         if mask is not None:
             C[:, ~mask] = np.float("inf")
 
         sizes = [len(v["boxes"]) for v in targets]
         C_split = C.split(sizes, -1)
         indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
-        
+
         if not return_cost_matrix:
             return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
         else:
@@ -192,7 +192,7 @@ class IterativeHungarianMatcher(nn.Module):
         gt_boxes = [v['combined_boxes'] for v in targets]
         relations = [v["image_relations"] for v in targets]
         relation_boxes = [v['relation_boxes'] for v in targets]
-        
+
         if len(relations) > 0:
             tgt_ids = torch.cat(relations)[:, 2]
             tgt_sub_labels = torch.cat([gt_label[relation[:, 0]] for gt_label, relation in zip(gt_labels, relations)])
@@ -211,17 +211,17 @@ class IterativeHungarianMatcher(nn.Module):
         cost_class = -out_prob[:, tgt_ids]
         cost_subject_class = -out_sub_prob[:, tgt_sub_labels]
         cost_object_class = -out_obj_prob[:, tgt_obj_labels]
-        
+
         cost_bbox = torch.cdist(out_bbox, tgt_boxes, p=1)
         cost_subject_bbox = torch.cdist(out_sub_bbox, tgt_sub_boxes, p=1)
         cost_object_bbox = torch.cdist(out_obj_bbox, tgt_obj_boxes, p=1)
-        
+
         cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_boxes))
         cost_subject_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_sub_bbox), box_cxcywh_to_xyxy(tgt_sub_boxes))
         cost_object_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_obj_bbox), box_cxcywh_to_xyxy(tgt_obj_boxes))
 
         C = self.cost_bbox * (cost_bbox + cost_subject_bbox + cost_object_bbox) + self.cost_class * (cost_class + cost_subject_class + cost_object_class) + self.cost_giou * (cost_giou + cost_subject_giou + cost_object_giou)
-        
+
         # Add aux loss cost
         if self.aux_loss:
             for aux_idx in range(len(aux_out_prob)):
@@ -239,10 +239,10 @@ class IterativeHungarianMatcher(nn.Module):
                 aux_C = self.cost_bbox * (aux_cost_bbox + aux_cost_subject_bbox + aux_cost_object_bbox) + self.cost_class * (aux_cost_class + aux_cost_subject_class + aux_cost_object_class) + self.cost_giou * (aux_cost_giou + aux_cost_subject_giou + aux_cost_object_giou)
 
                 C = C + aux_C
-            
-        C = C.view(bs, num_queries, -1).cpu()   
+
+        C = C.view(bs, num_queries, -1).cpu()
         # C : cost matrix with shape of (batch_size, n_queries, n_gts)
-        
+
         sizes = [len(v["image_relations"]) for v in targets]
         C_split = C.split(sizes, -1)
         indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
@@ -260,13 +260,13 @@ class IterativeHungarianMatcher(nn.Module):
             curr_pred_mask = torch.ones(num_queries, device=device)
             curr_pred_mask[curr_relation_idx[0]] = 0
             curr_pred_mask = (curr_pred_mask == 1)
-            
+
             combined_indices['relation'].append((curr_relation_idx[0], curr_relation_idx[1]))
-            for branch_idx, branch_type in enumerate(['subject', 'object']):  
+            for branch_idx, branch_type in enumerate(['subject', 'object']):
                 combined_indices[branch_type].append((curr_relation_idx[0], relation[:, branch_idx][curr_relation_idx[1]].cpu()))
         return combined_indices
 
-        
+
 @MATCHER_REGISTRY.register()
 class SpeaQHungarianMatcher(nn.Module):
     """This class computes an assignment between the targets and the predictions of the network
@@ -290,10 +290,10 @@ class SpeaQHungarianMatcher(nn.Module):
         self.match_independent = cfg.MODEL.DETR.MATCH_INDEPENDENT
         # mapping order based on train set
         self.relation_order = torch.tensor([30, 19, 21, 29, 47, 28, 49, 0, 20, 7, 42, 39, 48, 40, 22, 6, 5, 18, 32, 15, 37, 10, 13, 45, 36, 12, 23, 3, 46, 4, 9, 8, 33, 2, 24, 16, 34, 41, 26, 11, 27, 38, 35, 1, 14, 43, 31, 25, 17, 44])
-        
+
         #one to many
         self.o2m_scheme = cfg.MODEL.DETR.ONE2MANY_SCHEME
-        if self.o2m_scheme == 'dynamic':            
+        if self.o2m_scheme == 'dynamic':
             self.o2m_dynamic_scheme = cfg.MODEL.DETR.ONE2MANY_DYNAMIC_SCHEME
         self.o2m_k = cfg.MODEL.DETR.ONE2MANY_K
 
@@ -312,7 +312,8 @@ class SpeaQHungarianMatcher(nn.Module):
         self.o2m_predicate_score = cfg.MODEL.DETR.ONE2MANY_PREDICATE_SCORE
         self.o2m_predicate_weight = cfg.MODEL.DETR.ONE2MANY_PREDICATE_WEIGHT
 
-
+        # 将关系(relations)按照频率进行分组
+        # 返回一个列表，包含每个组应该包含的关系数量。比如 [1, 2, 2] 表示第一组包含1个关系，第二组包含2个关系，第三组包含2个关系
         self.size_of_groups = self.get_group_list_by_n_groups(self.num_groups)
 
         self.grouping()
@@ -328,18 +329,23 @@ class SpeaQHungarianMatcher(nn.Module):
     def grouping(self):
         device_group = 'cuda'
         group_tensor = -torch.ones(50, device=device_group)
+        # 计算每个组的关系频率总和
         sum_of_each_groups = torch.as_tensor(
             [x.sum().item() for x in torch.split(self.relation_freq, self.size_of_groups)], device=device_group)
+        # 根据频率比例分配查询数量
         n_queries_per_group = (sum_of_each_groups * self.num_mul_so_queries / sum_of_each_groups.sum()).int()
+        # 处理舍入误差，确保查询总数正确
         n_queries_per_group += self.fill_list((self.num_mul_so_queries - n_queries_per_group.sum()).item(), len(n_queries_per_group)).to(device=device_group)
         self.n_queries_per_group = n_queries_per_group.long()
         assert self.num_mul_so_queries == n_queries_per_group.sum()
+        # 将关系按照size_of_groups分割
         self.rel_order = torch.split(self.relation_order, self.size_of_groups)
+        # 为每个关系分配组ID
         for g, row in enumerate(self.rel_order):
             group_tensor[row] = g
-        self.group_tensor = group_tensor
-        self.freq_list = n_queries_per_group.cpu().numpy()
-        self.n_groups = len(self.freq_list)
+        self.group_tensor = group_tensor # 存储每个关系属于哪个组
+        self.freq_list = n_queries_per_group.cpu().numpy() # 存储每个组分
+        self.n_groups = len(self.freq_list) # 存储组的总数
 
 
     def get_group_list_by_n_groups(self, n_groups):
@@ -404,14 +410,14 @@ class SpeaQHungarianMatcher(nn.Module):
 
         # Final cost matrix
         C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
-        C = C.view(bs, num_queries, -1).cpu()        
+        C = C.view(bs, num_queries, -1).cpu()
         if mask is not None:
             C[:, ~mask] = np.float("inf")
 
         sizes = [len(v["boxes"]) for v in targets]
         C_split = C.split(sizes, -1)
         indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
-        
+
         if not return_cost_matrix:
             return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
         else:
@@ -421,13 +427,16 @@ class SpeaQHungarianMatcher(nn.Module):
     def forward_relation(self, outputs, targets, layer_num = -1, return_cost_matrix=False):
         copy_targets = copy.deepcopy(targets)
         bs, num_queries = outputs["relation_logits"].shape[:2]
+        # 处理一对多匹配的情况
         if self.o2m_scheme == 'static':
+            # 静态方案：简单地将每个目标重复k次
             for t in copy_targets:
                 t['image_relations'] = t['image_relations'].repeat_interleave(self.o2m_k, dim=0)
                 t['relation_boxes'] = t['relation_boxes'].repeat_interleave(self.o2m_k, dim=0)
                 t['relation_labels'] = t['relation_labels'].repeat_interleave(self.o2m_k, dim=0)
             k_mean_log = torch.tensor(self.o2m_k,device=outputs['relation_logits'].device).float()
         elif self.o2m_scheme == 'dynamic' and self.match_independent:
+             # 动态方案：基于IoU或其他度量动态决定每个目标匹配的数量
             if self.use_group_mask:
                 relations = [v["image_relations"] for v in copy_targets]
                 if len(relations) > 0:
@@ -460,14 +469,14 @@ class SpeaQHungarianMatcher(nn.Module):
                 tgt_obj_boxes = torch.cat([gt_box[relation[:, 1]] for gt_box, relation in zip(gt_boxes, relations)])
             else:
                 assert False, "No relation"
-
+            # 计算主体和客体的IoU
             sub_iou = box_iou(box_cxcywh_to_xyxy(out_sub_bbox), box_cxcywh_to_xyxy(tgt_sub_boxes))[0].view(bs, num_queries, -1)
             obj_iou = box_iou(box_cxcywh_to_xyxy(out_obj_bbox), box_cxcywh_to_xyxy(tgt_obj_boxes))[0].view(bs, num_queries, -1)
             if self.use_group_mask:
                 mask_iou = (group_mask.view(bs,num_queries,-1)==0).float()
                 sub_iou *=mask_iou
                 obj_iou *=mask_iou
-
+            # 根据策略选择最终的IoU分数
             if self.o2m_dynamic_scheme =='min':
                 cum_iou = torch.min(sub_iou,obj_iou)
             elif self.o2m_dynamic_scheme =='max':
@@ -495,6 +504,7 @@ class SpeaQHungarianMatcher(nn.Module):
         else:
             NotImplementedError
 
+        # 获取预测结果
         bs, num_queries = outputs["relation_logits"].shape[:2]
         out_prob = outputs["relation_logits"].flatten(0, 1).softmax(-1)
         out_sub_prob = outputs["relation_subject_logits"].flatten(0, 1).softmax(-1)
@@ -517,7 +527,8 @@ class SpeaQHungarianMatcher(nn.Module):
         gt_boxes = [v['combined_boxes'] for v in copy_targets]
         relations = [v["image_relations"] for v in copy_targets]
         relation_boxes = [v['relation_boxes'] for v in copy_targets]
-        
+
+        # 获取目标标注
         if len(relations) > 0:
             tgt_ids = torch.cat(relations)[:, 2] #relation cls
             tgt_sub_labels = torch.cat([gt_label[relation[:, 0]] for gt_label, relation in zip(gt_labels, relations)])
@@ -534,40 +545,63 @@ class SpeaQHungarianMatcher(nn.Module):
             tgt_obj_boxes = torch.zeros((0,4)).to(device)
 
         if self.use_group_mask:
+            # 获取目标关系的类别ID
             relations = [v["image_relations"] for v in copy_targets]
             if len(relations) > 0:
                 tgt_ids = torch.cat(relations)[:, 2] #relation cls
             else:
                 tgt_ids = torch.tensor([]).long().to(device)
-
+            # 创建分组掩码
             group_mask = 1-F.one_hot(self.group_tensor[tgt_ids].long(), num_classes=len(self.n_queries_per_group)).t().to(outputs['relation_logits'].device)
+            # 为每个组分配查询
             freq_list = [fl * self.query_multiple for fl in self.n_queries_per_group]
             for idx, freq in enumerate(freq_list):
+                # 为每个组创建掩码
                 temp = group_mask[idx].reshape(1,1,-1).repeat(bs, freq, 1)*1e+6
                 if idx == 0:
                     new_group_mask = temp
                 else:
                     new_group_mask = torch.cat((new_group_mask, temp), 1)
-
+            # 应用掩码到成本矩阵
+            # 假设我们有3个组：
+            # # 组0：高频关系（分配4个查询）
+            # # 组1：中频关系（分配3个查询）
+            # # 组2：低频关系（分配2个查询）
+            # # group_mask 可能看起来像这样（简化版）：
+            # [
+            #     # 前4个查询（组0）
+            #     [0, 1e6, 1e6],  # 只能匹配组0的关系
+            #     [0, 1e6, 1e6],
+            #     [0, 1e6, 1e6],
+            #     [0, 1e6, 1e6],
+            #     # 中间3个查询（组1）
+            #     [1e6, 0, 1e6],  # 只能匹配组1的关系
+            #     [1e6, 0, 1e6],
+            #     [1e6, 0, 1e6],
+            #     # 最后2个查询（组2）
+            #     [1e6, 1e6, 0],  # 只能匹配组2的关系
+            #     [1e6, 1e6, 0]
+            # ]
+            # 1.确保每个频率组都有专门的查询来处理
+            # 防止高频关系占用所有的查询
+            # 3. 为低频关系保留足够的学习资源
+            # 通过硬约束来强制实现分组匹配
             group_mask = new_group_mask.reshape(bs*num_queries, -1)
 
+        # 分类成本
         cost_class = -out_prob[:, tgt_ids]
         cost_subject_class = -out_sub_prob[:, tgt_sub_labels]
-        
         cost_object_class = -out_obj_prob[:, tgt_obj_labels]
-        
-        
+        # 边界框L1成本
         cost_bbox = torch.cdist(out_bbox, tgt_boxes, p=1)
         cost_subject_bbox = torch.cdist(out_sub_bbox, tgt_sub_boxes, p=1)
-        
         cost_object_bbox = torch.cdist(out_obj_bbox, tgt_obj_boxes, p=1)
-        
+        # GIoU成本
         cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_boxes))
         cost_subject_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_sub_bbox), box_cxcywh_to_xyxy(tgt_sub_boxes))
-        
         cost_object_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_obj_bbox), box_cxcywh_to_xyxy(tgt_obj_boxes))
 
-
+        # 组合总成本
         C = self.cost_bbox * (cost_bbox + cost_subject_bbox + cost_object_bbox) + self.cost_class * (cost_class + cost_subject_class + cost_object_class) + self.cost_giou * (cost_giou + cost_subject_giou + cost_object_giou)
         # Add aux loss cost
         if self.aux_loss and not self.match_independent:
@@ -584,33 +618,42 @@ class SpeaQHungarianMatcher(nn.Module):
                 aux_cost_subject_giou = -generalized_box_iou(box_cxcywh_to_xyxy(aux_out_sub_bbox[aux_idx]), box_cxcywh_to_xyxy(tgt_sub_boxes))
                 aux_cost_object_giou = -generalized_box_iou(box_cxcywh_to_xyxy(aux_out_obj_bbox[aux_idx]), box_cxcywh_to_xyxy(tgt_obj_boxes))
 
-                
+
                 aux_C = self.cost_bbox * (aux_cost_bbox + aux_cost_subject_bbox + aux_cost_object_bbox) + self.cost_class * (aux_cost_class + aux_cost_subject_class + aux_cost_object_class) + self.cost_giou * (aux_cost_giou + aux_cost_subject_giou + aux_cost_object_giou)
                 C = C + aux_C
 
+        # 应用分组掩码（如果使用）
         if self.use_group_mask:
-            C = C + group_mask
+            C = C + group_mask # 添加分组约束
         C = C.view(bs, num_queries, -1).cpu()
 
+        # 分割成本矩阵并执行匹配: 执行匈牙利匹配
         sizes = [len(v["image_relations"]) for v in copy_targets]
         C_split = C.split(sizes, -1)
         indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
         indices = [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
 
+        # 整理匹配结果
         # Remaining GT objects matching
         pred_masks = {'subject': [], 'object': []}
         target_masks = {'subject' :[], 'object': []}
+        # 组织最终的匹配结果
         combined_indices = {'subject' :[], 'object': [], 'relation': []}
         for image_idx, target in enumerate(copy_targets):
             all_objects = torch.arange(len(gt_labels[image_idx])).to(device)
+            # 获取当前图像的匹配结果
             relation = target['image_relations']
             curr_relation_idx = indices[image_idx]
+            # 创建一个掩码，表示哪些查询被匹配
             curr_pred_mask = torch.ones(num_queries, device=device)
+            # 将匹配的查询掩码设置为0
             curr_pred_mask[curr_relation_idx[0]] = 0
+            # 将掩码转换为布尔值
             curr_pred_mask = (curr_pred_mask == 1)
-            
+             # 添加关系匹配
             combined_indices['relation'].append((curr_relation_idx[0], curr_relation_idx[1]))
-            for branch_idx, branch_type in enumerate(['subject', 'object']):  
+            # 添加主体和客体匹配
+            for branch_idx, branch_type in enumerate(['subject', 'object']):
                 combined_indices[branch_type].append((curr_relation_idx[0], relation[:, branch_idx][curr_relation_idx[1]].cpu()))
         return combined_indices, k_mean_log, copy_targets
 
